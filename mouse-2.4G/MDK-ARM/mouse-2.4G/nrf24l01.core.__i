@@ -1,0 +1,6 @@
+--c99 -c --cpu Cortex-M3 -g -O0 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/HID/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include
+-I.\RTE\_mouse-2.4G
+-ID:\Keil_v5\PACK\ARM\CMSIS\6.1.0\CMSIS\Core\Include
+-ID:\Keil_v5\PACK\Keil\STM32F1xx_DFP\2.4.1\Device\Include
+-D__UVISION_VERSION="540" -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB
+-o mouse-2.4g\nrf24l01.core.o --omf_browse mouse-2.4g\nrf24l01.core.crf --depend mouse-2.4g\nrf24l01.core.d "..\Core\Src\nrf24l01.core.c"

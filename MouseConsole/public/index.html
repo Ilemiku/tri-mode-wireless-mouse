@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mouse · 设备控制台</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <span class="eyebrow">MOUSE / LOCAL CONSOLE</span>
+          <h1>掌控每一次移动</h1>
+          <p>设置由鼠标执行，结果由传感器确认。</p>
+        </div>
+        <span id="connection" class="badge">管理服务未连接</span>
+      </header>
+      <section class="connect">
+        <label
+          >连接令牌<input
+            id="token"
+            type="password"
+            autocomplete="off"
+            placeholder="粘贴启动窗口显示的令牌" /></label
+        ><button id="connect">连接管理服务</button>
+      </section>
+      <section class="cards">
+        <article>
+          <span>设备</span
+          ><select id="device">
+            <option value="">等待设备上报</option>
+          </select>
+          <p id="online">未发现在线设备</p>
+        </article>
+        <article>
+          <span>传感器实际DPI</span><strong id="actual">—</strong>
+          <p id="register">等待ZE寄存器读回</p>
+        </article>
+        <article>
+          <span>当前模式</span><strong id="mode">—</strong>
+          <p id="version">固件版本 —</p>
+        </article>
+      </section>
+      <section class="panel">
+        <div>
+          <h2>灵敏度设置</h2>
+          <p>选择档位后下发。只有ZE返回成功并读回一致，才显示“已生效”。</p>
+        </div>
+        <div class="controls">
+          <select id="dpi">
+            <option>800</option>
+            <option>1600</option>
+            <option selected>3200</option>
+            <option>6400</option></select
+          ><button id="apply" disabled>应用DPI</button
+          ><button id="query" class="secondary" disabled>读取实际设置</button>
+        </div>
+        <p id="result" role="status">尚未下发命令</p>
+      </section>
+      <section class="panel">
+        <h2>ESP32固件升级</h2>
+        <p>
+          仅升级ESP32，不改ZE或C8T6。上传应用bin后，设备通过HTTPS写备用槽；重启自检通过才算成功。
+        </p>
+        <label>选择ESP32应用固件<input id="firmware" type="file" accept=".bin" /></label>
+        <div class="controls">
+          <button id="upload" class="secondary" disabled>上传并检查升级包</button
+          ><select id="release" aria-label="可用升级版本">
+            <option value="">尚无升级包</option></select
+          ><button id="upgrade" disabled>升级ESP32</button>
+        </div>
+        <p id="ota-package">不接受bootloader、分区表或合并镜像。</p>
+        <progress id="ota-progress" max="100" value="0" aria-label="升级进度"></progress>
+        <p id="ota-status" role="status">等待支持OTA的固件上线。</p>
+        <p id="ota-detail">升级会重启ESP32，BLE会短暂断开；有线与2.4G不依赖ESP32。</p>
+      </section>
+      <section class="panel">
+        <h2>通信记录</h2>
+        <p>这里显示的是应用命令与回执；MQTT的PUBACK不代表传感器已执行。</p>
+        <pre id="events" aria-live="polite"></pre>
+      </section>
+      <footer>
+        当前进度 · MQTT设置闭环已验证 ｜ LVGL中文屏、DMA及触摸DPI设置已验证 ｜
+        ESP32无线OTA及自动回滚已验证 ｜ 三模体验与断电保护待进一步验收
+      </footer>
+    </main>
+    <script src="/mqtt.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

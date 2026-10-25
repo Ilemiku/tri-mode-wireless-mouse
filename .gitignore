@@ -1,0 +1,75 @@
+# ===== 构建产物 =====
+*.o
+*.d
+*.crf
+*.axf
+*.hex
+*.htm
+*.map
+*.lnp
+*.dep
+*.lst
+*.bak
+build_log.txt
+*.log
+
+# Keil 用户级配置（不入库）
+*.uvoptx
+*.uvguix*
+
+# Keil 输出目录
+**/Objects/
+**/Listings/
+
+# PlatformIO / ESP-IDF
+.pio/
+.vscode/
+sdkconfig
+sdkconfig.old
+
+# CubeMX 本地缓存
+.mxproject
+
+# 本地工具 / 驱动安装包
+ftdi_driver/
+
+# 临时资料
+**/_tmp_pdf/
+
+# ESP32 本地备份
+Esp32Mouse/_backup/
+node_modules/
+MouseConsole/.local/
+Esp32Mouse/managed_components/
+Esp32Mouse/.ota/
+
+# Local diagnostics, personal resumes, and desktop chat housekeeping are not source releases.
+/Diagnostics/
+/Mouse/Project/AutomationLogs/
+/Mouse/简历实训/
+/Mouse/codex-global-state*.json
+/Mouse/对话分类映射_*
+/Mouse/对话分组清单.md
+/Mouse/归组_退出后双击我.bat
+/Mouse/还原_退出后双击我.bat
+/Docs/架构与规划/_交接_项目状态与学习进度_2026-09-08.md
+/Docs/架构与规划/_项目总结_简历素材_*.md
+/Docs/架构与规划/_规划_无线鼠标_2026-08-21.md
+
+# Private credentials belong in local configuration, never in a public repository.
+.env
+.env.*
+!.env.example
+*.key
+*.p12
+*.pfx
+__pycache__/
+*.pyc
+
+# Public repository: source, build configuration, root README, and dependency notices only.
+/Docs/
+/CONTEXT.md
+/Esp32Mouse/docs/
+/TheMouse/从HAL到寄存器详解.md
+/Mouse/Tools/README.md
+/MouseConsole/README.md

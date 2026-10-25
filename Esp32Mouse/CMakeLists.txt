@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.16.0)
+set(PROJECT_VER "0.2.1")
+# Test switch is intentionally explicit. Never ship a normal version with it on.
+set(MOUSE_OTA_TEST_ROLLBACK 0)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/.ota/ca.pem")
+    message(FATAL_ERROR "Missing local OTA CA. Run: python Tools/setup_ota_tls.py --host YOUR_PC_LAN_IP")
+endif()
+if(MOUSE_OTA_TEST_ROLLBACK AND NOT PROJECT_VER MATCHES "-rollback-test$")
+    message(FATAL_ERROR "Rollback fault injection requires a -rollback-test version")
+endif()
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(Esp32Mouse)

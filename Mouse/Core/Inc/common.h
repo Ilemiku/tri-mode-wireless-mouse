@@ -1,0 +1,5 @@
+#ifndef __COMMON_H
+#define __COMMON_H
+#include "reg32f1.h"
+
+#endif

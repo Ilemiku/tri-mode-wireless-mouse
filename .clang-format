@@ -1,0 +1,15 @@
+# Project-owned C/C++ only. Keep third-party and generated files unchanged.
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+BreakBeforeBraces: Allman
+ColumnLimit: 100
+SortIncludes: false
+ReflowComments: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+PointerAlignment: Right
+SpaceBeforeParens: ControlStatements

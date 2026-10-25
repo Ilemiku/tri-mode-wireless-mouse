@@ -1,0 +1,11 @@
+**/node_modules/**
+**/.local/**
+**/.ota/**
+**/.pio/**
+**/ThirdParty/**
+**/FreeRTOS/**
+**/Objects/**
+**/Listings/**
+**/package-lock.json
+Docs/**
+Mouse/简历实训/**

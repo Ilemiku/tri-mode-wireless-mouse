@@ -1,0 +1,160 @@
+:root {
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  color: #dce8f4;
+  background: #0c1422;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 1080px;
+  margin: auto;
+  padding: 56px 24px;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 36px;
+}
+.eyebrow {
+  letter-spacing: 3px;
+  color: #6edbc4;
+  font-size: 12px;
+}
+h1 {
+  font-size: 38px;
+  margin: 14px 0;
+}
+p {
+  color: #91a4ba;
+  line-height: 1.7;
+  font-size: 14px;
+}
+h2 {
+  font-size: 20px;
+}
+.badge {
+  border: 1px solid #34445c;
+  padding: 10px 14px;
+  border-radius: 24px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.connect {
+  display: flex;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 24px;
+}
+label {
+  flex: 1;
+  font-size: 13px;
+  color: #91a4ba;
+}
+input,
+select,
+button {
+  font: inherit;
+  padding: 12px 16px;
+  border-radius: 9px;
+  border: 1px solid #34445c;
+  min-height: 46px;
+}
+input {
+  display: block;
+  margin-top: 8px;
+  width: 100%;
+  background: #111f31;
+}
+select {
+  background: #152337;
+  max-width: 100%;
+}
+button {
+  cursor: pointer;
+  background: #66dcc0;
+  color: #0c2420;
+  font-weight: 600;
+  border-color: transparent;
+}
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.secondary {
+  background: transparent;
+  border-color: #34445c;
+  color: #dce8f4;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+article,
+.panel {
+  background: #121f30;
+  border: 1px solid #26374d;
+  border-radius: 15px;
+  padding: 24px;
+}
+article > span {
+  display: block;
+  color: #91a4ba;
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+article strong {
+  font-size: 32px;
+}
+article select {
+  width: 100%;
+}
+.panel {
+  margin-top: 20px;
+}
+.controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 24px 0;
+}
+pre {
+  height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #9bd6cc;
+  font-size: 12px;
+  line-height: 1.8;
+  background: #0c1726;
+  padding: 16px;
+  border-radius: 9px;
+}
+footer {
+  color: #667e97;
+  margin: 30px 0;
+  font-size: 12px;
+}
+@media (max-width: 700px) {
+  main {
+    padding-top: 28px;
+  }
+  header,
+  .connect {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cards {
+    grid-template-columns: 1fr;
+  }
+  h1 {
+    font-size: 28px;
+  }
+}

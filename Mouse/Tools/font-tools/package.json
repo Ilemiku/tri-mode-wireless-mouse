@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "description": "仅用于生成鼠标LVGL中文字库，不随设备运行",
+  "devDependencies": { "lv_font_conv": "1.5.3" }
+}

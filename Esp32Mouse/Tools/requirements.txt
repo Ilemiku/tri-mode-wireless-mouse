@@ -1,0 +1,2 @@
+# Host-side certificate provisioning only; not an ESP32 firmware dependency.
+cryptography==50.0.2

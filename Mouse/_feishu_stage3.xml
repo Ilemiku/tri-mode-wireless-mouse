@@ -1,0 +1,279 @@
+<h1>📘 阶段 3 完整整理：枚举全流程跑通（Windows 识别为 4 键鼠标）</h1>
+
+<h2>1. 目标与验收标准</h2>
+<p><b>目标</b>：完成 USB 枚举全流程——设备描述符 → SET_ADDRESS → 配置描述符 → 报告描述符 → SET_CONFIGURATION → EP1 初始化，让 Windows 把板子正式识别成鼠标。</p>
+<p><b>验收标准</b>：USB TreeView 显示 HID-compliant mouse、驱动 mouhid.sys 加载、Number of Buttons: 4、无 Problem Code；串口能看到 GET_DESCRIPTOR(device) → SET_ADDRESS → SET_CONFIGURATION 三条关键请求。</p>
+
+<h2>2. 枚举全流程：文档典型流程 vs Windows 实际</h2>
+<table>
+<thead><tr><th><p>阶段</p></th><th><p>文档典型流程</p></th><th><p>Windows 实际表现</p></th></tr></thead>
+<tbody>
+<tr><td><p>开始</p></td><td><p>复位 → 设备地址 0</p></td><td><p>可能连续多次 RESET，每次都是一次完整枚举尝试</p></td></tr>
+<tr><td><p>你是谁</p></td><td><p>GET_DESCRIPTOR(设备)</p></td><td><p>第一次可能只要 64 字节，回 18 字节短包即可；成功后主机缓存</p></td></tr>
+<tr><td><p>起名字</p></td><td><p>SET_ADDRESS</p></td><td><p>地址在状态阶段完成后才生效；后续请求可能跳过已缓存的步骤</p></td></tr>
+<tr><td><p>有什么能力</p></td><td><p>GET_DESCRIPTOR(配置, 9) → 再要 34</p></td><td><p>可能一次直接要 34；请求太快会被调试打印吞掉看不到</p></td></tr>
+<tr><td><p>报告长什么样</p></td><td><p>GET_DESCRIPTOR(报告)</p></td><td><p>wLength 给 126，实际回 62 字节，靠短包收尾</p></td></tr>
+<tr><td><p>批准上岗</p></td><td><p>SET_CONFIGURATION(1)</p></td><td><p>出现它 = 前面描述符全过；之后主机开始轮询 EP1</p></td></tr>
+</tbody>
+</table>
+<p><b>关键认知</b>：判断进度别按“顺序对不对”，要按“下一个请求证明了什么”。比如主机发 CLEAR_FEATURE(EP1)，就证明它已经拿到配置描述符知道 EP1 存在；主机发 SET_CONFIGURATION，就证明描述符阶段全过。</p>
+
+<h2>3. 关键实现</h2>
+
+<h3>3.1 三个描述符数组</h3>
+<pre lang="c"><code>static u8 device_desc[18] = { 0x12,0x01,0x10,0x01, 0x00,0x00,0x00,0x40,
+                              0x01,0x01,0x39,0x39, 0x00,0x01,0x00,0x00,0x00,0x01 };
+
+static u8 config_desc[34] =
+{
+    /* 配置描述符（9） */
+    0x09, 0x02, 0x22, 0x00, 0x01, 0x01, 0x00, 0x80, 0x32,
+    /* 接口描述符（9）：HID 鼠标 */
+    0x09, 0x04, 0x00, 0x00, 0x01, 0x03, 0x01, 0x02, 0x00,
+    /* HID 描述符（9）：报告描述符 62 字节 */
+    0x09, 0x21, 0x11, 0x01, 0x00, 0x01, 0x22, 0x3E, 0x00,
+    /* 端点描述符（7）：EP1 IN 中断 4 字节 10ms */
+    0x07, 0x05, 0x81, 0x03, 0x04, 0x00, 0x0A
+};
+
+static u8 report_desc[62] =
+{
+    0x05,0x01,0x09,0x02,0xA1,0x01,0x09,0x01,0xA1,0x00,
+    0x05,0x09,0x19,0x01,0x29,0x04,0x15,0x00,0x25,0x01,  /* 4 键 */
+    0x95,0x04,0x75,0x01,0x81,0x02,0x95,0x01,0x75,0x04,
+    0x81,0x03,
+    0x05,0x01,0x09,0x30,0x09,0x31,0x15,0x81,0x25,0x7F,
+    0x75,0x08,0x95,0x02,0x81,0x06,
+    0x09,0x38,0x15,0x81,0x25,0x7F,0x75,0x08,0x95,0x01,
+    0x81,0x06,
+    0xC0,0xC0
+};</code></pre>
+<p>配置块 = 配置(9) + 接口(9) + HID(9) + 端点(7) = 34 字节；HID 描述符里的 wDescriptorLength=0x3E 必须等于 report_desc 真实长度 62。</p>
+
+<h3>3.2 GET_DESCRIPTOR 分发</h3>
+<pre lang="c"><code>else if (SetupReq.bRequest == USB_REQ_GET_DESCRIPTOR)
+{
+    switch ((u8)(SetupReq.wValue &gt;&gt; 8))       /* 高字节是描述符类型 */
+    {
+        case USB_DESC_DEVICE:
+            USB_HW_EpTx(0, device_desc,
+                        (SetupReq.wLength &lt; 18) ? SetupReq.wLength : 18);
+            break;
+        case USB_DESC_CONFIGURATION:
+            USB_HW_EpTx(0, config_desc,
+                        (SetupReq.wLength &lt; 34) ? SetupReq.wLength : 34);
+            break;
+        case USB_DESC_REPORT:
+            USB_HW_EpTx(0, report_desc,
+                        (SetupReq.wLength &lt; 62) ? SetupReq.wLength : 62);
+            break;
+        default:
+            break;
+    }
+}</code></pre>
+<p>铁律：回传长度 = min(wLength, 描述符真实长度)。报告描述符 62 字节 &lt; 64，一个包发完，主机靠短包知道传输结束。</p>
+
+<h3>3.3 SET_ADDRESS 时序</h3>
+<pre lang="c"><code>if (SetupReq.bRequest == USB_REQ_SET_ADDRESS)
+{
+    usb_pending_addr = (u8)(SetupReq.wValue &amp; 0x7F);   /* 先暂存 */
+}
+/* CTR_TX 中断里：状态阶段 IN 空包发完，地址才生效 */
+if (usb_pending_addr)
+{
+    USB-&gt;DADDR = (usb_pending_addr | (1U &lt;&lt; 7));
+    usb_pending_addr = 0;
+}</code></pre>
+<p>地址不能收到 SETUP 就立刻写，要等状态阶段主机 ACK 之后再切换，否则主机后续用新地址的请求全部丢失。</p>
+
+<h3>3.4 SET_CONFIGURATION + EP1 上岗</h3>
+<pre lang="c"><code>else if (SetupReq.bRequest == USB_REQ_SET_CONFIGURATION)
+{
+    usb_config_value = (u8)(SetupReq.wValue &amp; 0xFF);
+    if (usb_config_value == 1)
+    {
+        USB_Ep1_Init();          /* 配置完成，EP1 开始工作 */
+    }
+}
+/* 然后 wLength==0 统一回空包（状态阶段 IN ZLP） */</code></pre>
+
+<h3>3.5 EP1 初始化（方案 B）</h3>
+<pre lang="c"><code>void USB_Ep1_Init(void)
+{
+    USB_PMA[1].ADDR_TX  = usb_ep_tx_addr[1];   /* 0xA0 */
+    USB_PMA[1].COUNT_TX = 4;
+
+    /* STAT_TX 先 DISABLED，USB_HW_EpTx 内部翻转开门 */
+    USB-&gt;EP1R = (((u16)EP_STAT_NAK &lt;&lt; 12) | (3U &lt;&lt; 9));
+    USB_HW_EpTx(1, test_desc, 4);              /* 先发一帧全 0 报告 */
+}</code></pre>
+<p>EP1R：位 13:12 STAT_RX=NAK（纯 IN 端点不用 RX）、位 10:9 EP_TYPE=11（中断端点）、位 5:4 STAT_TX 交给 EpTx 翻转成 VALID。</p>
+
+<h2>4. 坑与解答（今天的血泪）</h2>
+
+<h3>坑 1：报告描述符长度直接传 wLength=126</h3>
+<p><b>现象</b>：枚举到 GET_DESCRIPTOR(报告) 就 RESET 循环。</p>
+<p><b>原因</b>：report_desc 只有 62 字节，USB_HW_EpTx 却按 126 写 PMA：越界读内存垃圾 + 覆盖 EP0 RX 缓冲（0x60 起），主机收到损坏的报告描述符 → 复位重来。</p>
+<p><b>解答</b>：回 min(wLength, 62)。所有描述符回传都遵守 min(wLength, 真实长度)。</p>
+
+<h3>坑 2：EP1 初始化里写 DADDR → 地址清零</h3>
+<p><b>现象</b>：USB TreeView 显示 Problem Code 10 (CM_PROB_FAILED_START)、Current Config Value=0x00。</p>
+<p><b>原因</b>：SET_CONFIGURATION 时 USB_Ep1_Init 里写了 USB-&gt;DADDR=(1U&lt;&lt;7)，把主机刚分配的地址清成 0。主机之后用新地址发 IN 轮询，地址不匹配全部无响应。</p>
+<p><b>解答</b>：EP1 初始化严禁碰 DADDR。地址是主机分配的，谁也别动。</p>
+
+<h3>坑 3：误删 EP0 初始化里的 DADDR → 四个 RESET 无 SETUP</h3>
+<p><b>现象</b>：连上就连续 USB RESET，一条 SETUP 打印都没有。</p>
+<p><b>原因</b>：USB_Ep0_Init 里的 DADDR 行被误删，EF 位没置 1，USB 外设根本没使能，主机第一个 SETUP 就不响应。</p>
+<p><b>解答</b>：USB_Ep0_Init（复位）里必须有 USB-&gt;DADDR=(1U&lt;&lt;7)（EF=1、地址 0）；EP1 初始化里不能有。两个位置的职责别搞混。</p>
+
+<h3>坑 4：打印吞事件 + 两条 printf 错位</h3>
+<p><b>现象</b>：SET_ADDRESS 打印成 SET_CONFIGURATION；日志里看不到配置/报告描述符请求。</p>
+<p><b>原因</b>：usb_setup_flag 是单标志 + printf 阻塞，多个请求挤在打印期间，后一个覆盖前一个；SETUP 行和解析行是两次 printf，中间被 USB 中断打断就会错位。</p>
+<p><b>解答</b>：SETUP 行和解析行合并成一条 printf（参数同一瞬间取值）；调试期精简打印，只留关键请求。</p>
+
+<h3>坑 5：STAT 开门方式二选一</h3>
+<p><b>现象</b>：EP1 一直 NAK，报告发不出去。</p>
+<p><b>原因</b>：USB_Ep1_Init 先写 STAT_TX=VALID，又调 USB_HW_EpTx（内部“翻转”开门），VALID 被翻回 NAK。</p>
+<p><b>解答</b>：要么 Init 里直接写 VALID（别再调 EpTx）；要么 Init 里 DISABLED，让 EpTx 翻转成 VALID。开一次门，别开两次。</p>
+
+<h3>坑 6：PMA 32 位对齐存储 + 小端</h3>
+<p><b>现象</b>：真实 SETUP 80 06 00 01 00 00 40 00 被读成 80 00 00 00 00 00 40 00。</p>
+<p><b>原因</b>：每个 16 位字存在 32 位对齐的 cell，字 i 在 cell addr+2*i（中间隔一个）；连续 cell 读会全部错位。另外 USB 多字节字段是小端，低字节在前。</p>
+<p><b>解答</b>：读写 PMA 步进 addr+2*i；解析 16 位字段用 b[0] | b[1]&lt;&lt;8。</p>
+
+<h3>坑 7：函数签名改 const 要同步 .h</h3>
+<p><b>现象</b>：declaration is incompatible with &quot;void USB_HW_EpTx(u8, u8 *, u16)&quot;。</p>
+<p><b>解答</b>：.c 定义和 .h 声明必须完全一致。形参改成 const u8 * 后，描述符数组传参不用再强转。</p>
+
+<h3>坑 8：USB TreeView 的 ERROR_GEN_FAILURE 不一定是设备错</h3>
+<p><b>现象</b>：HID 报告描述符位置显示 Error reading descriptor: ERROR_GEN_FAILURE。</p>
+<p><b>解答</b>：这是 Win32 USB API 用户态不能读类特定描述符的已知限制（工具问题）。判断标准看 Device Description 是不是 HID-compliant mouse、Problem 是否消失。</p>
+
+<h2>5. 当前代码组织</h2>
+<table>
+<thead><tr><th><p>函数</p></th><th><p>职责</p></th></tr></thead>
+<tbody>
+<tr><td><p>USB_Ep0_Init</p></td><td><p>复位后配置 EP0 端点表 + EP0R + DADDR(EF=1)</p></td></tr>
+<tr><td><p>USB_Ep0_Setup</p></td><td><p>读 SETUP → 开门 → 解析 → 按请求回包 → 置标志</p></td></tr>
+<tr><td><p>USB_HW_EpTx</p></td><td><p>写 PMA + COUNT_TX + 翻转 STAT_TX（装数据+开门一条龙）</p></td></tr>
+<tr><td><p>USB_HW_EpRx</p></td><td><p>写 ADDR_RX/COUNT_RX + 翻转 STAT_RX</p></td></tr>
+<tr><td><p>USB_Ep_Toggle</p></td><td><p>只翻转 STAT/DTOG，不碰 CTR</p></td></tr>
+<tr><td><p>USB_Ep_ClearCtrl</p></td><td><p>只清 CTR_RX/CTR_TX，不碰 STAT/DTOG</p></td></tr>
+<tr><td><p>USB_Ep1_Init</p></td><td><p>EP1 端点表 + EP1R + 发第一帧全 0 报告</p></td></tr>
+<tr><td><p>USB_EventPrint</p></td><td><p>主循环打印 SETUP（已精简）</p></td></tr>
+</tbody>
+</table>
+
+<h2>6. 下一阶段预告（阶段 4：EP1 发报告，让光标动）</h2>
+<ul>
+<li>当前 EP1 发的是全 0 报告，Windows 已认鼠标但光标不动</li>
+<li>阶段 4：接 PWM3360，读 dx/dy/按键 → 组 4 字节报告（按键、X、Y、滚轮）→ 主循环 10ms 发一帧</li>
+<li>验收：光标随传感器移动，按键/滚轮正常，方向与位移一致</li>
+</ul>
+
+<hr>
+
+<h1>📘 阶段 4 完整整理：EP1 中断 IN 传输跑通（鼠标光标能动）</h1>
+
+<h2>1. 目标与验收标准</h2>
+<p><b>目标</b>：枚举完成后，EP1 作为中断 IN 端点持续把 6 字节鼠标报告发给主机，光标跟随 PWM3360 传感器移动。</p>
+<p><b>验收标准</b>：USB TreeView 仍显示 HID-compliant mouse（mouhid 加载、4 键）；光标随传感器位移移动、方向一致；串口不再刷 EP1 busy。</p>
+
+<h2>2. 今天解决的最终 Bug：EP1R 的 EA 字段没写，等于 0</h2>
+
+<h3>2.1 现象（三个证据对上）</h3>
+<ul>
+<li>主机已识别为鼠标（mouhid 加载、Number of Buttons: 4），传感器数据串口正常刷新，但光标不动</li>
+<li>串口反复打印 <code>EP1 busy: EP1R=2630</code></li>
+<li>仿真器看 ISTR：EPID=0x00，始终没有 CTR 事件（ESOF/SOF/SUSP 都勾着，但那些只是正常的总线事件）</li>
+</ul>
+
+<h3>2.2 根因：令牌匹配不上</h3>
+<p>F1 的 <code>USB_EPnR</code> 位 3:0 是 EA（Endpoint Address）。参考手册原文：主机令牌里的端点号必须<b>同时</b>匹配 DADDR（设备地址）和对应 EPnR 的 EA 字段，外设才会处理这次事务。</p>
+<p><code>USB_Ep1_Init</code> 只写了 STAT_RX=NAK + EP_TYPE=Interrupt + STAT_TX=VALID，忘了写 EA=1。所以初始化后 EP1R=0x2630：</p>
+<table>
+<thead><tr><th><p>位</p></th><th><p>字段</p></th><th><p>0x2630 里的值</p></th><th><p>说明</p></th></tr></thead>
+<tbody>
+<tr><td><p>13:12</p></td><td><p>STAT_RX</p></td><td><p>10 (NAK)</p></td><td><p>纯 IN 端点，RX 不参与</p></td></tr>
+<tr><td><p>10:9</p></td><td><p>EP_TYPE</p></td><td><p>11 (Interrupt)</p></td><td><p>这里是对的，见坑 2</p></td></tr>
+<tr><td><p>5:4</p></td><td><p>STAT_TX</p></td><td><p>11 (VALID)</p></td><td><p>一直等在原地，说明数据从没被取走</p></td></tr>
+<tr><td><p>3:0</p></td><td><p>EA</p></td><td><p>0000</p></td><td><p><b>Bug：应该是 1</b></p></td></tr>
+</tbody>
+</table>
+<p>主机轮询"端点 1"的 IN 令牌，硬件拿 EA=0 去比，匹配不上 → 外设不响应 → 主机拿不到数据、光标不动。手册还警告：多个端点 EA 相同行为未定义（当时 EP0 和 EP1 都是 0，正好撞号）。</p>
+
+<h3>2.3 修复：一行</h3>
+<pre lang="c"><code>/* 修复前：0x2630，EA=0，主机轮询 EP1 无响应 */
+USB-&gt;EP1R = (((u16)EP_STAT_NAK &lt;&lt; 12) | ((u16)EP_STAT_VALID &lt;&lt; 4) | (3U &lt;&lt; 9));
+
+/* 修复后：0x2631，EA=1，主机 IN 令牌命中 */
+USB-&gt;EP1R = (((u16)EP_STAT_NAK &lt;&lt; 12) | ((u16)EP_STAT_VALID &lt;&lt; 4) | (3U &lt;&lt; 9) | 1U);</code></pre>
+
+<h2>3. EP1 发送链路（6 字节报告）</h2>
+<p>主循环每 10ms 一次：</p>
+<pre lang="c"><code>PWM3360_ReadMotion(&amp;motion);
+Mouse_BuildReport(&amp;motion, mouse_report);
+if (usb_config_value == 1)          /* 只有 SET_CONFIGURATION 之后才发 */
+{
+    USB_HW_EpTx(1, mouse_report, 6);
+}</code></pre>
+<p>报告 6 字节（和报告描述符、端点 wMaxPacketSize=6 严格对应）：</p>
+<table>
+<thead><tr><th><p>字节</p></th><th><p>含义</p></th></tr></thead>
+<tbody>
+<tr><td><p>0</p></td><td><p>按键位图（左/中/右 + DPI 键，共 4 键）</p></td></tr>
+<tr><td><p>1~2</p></td><td><p>X 位移，16 位有符号，低字节在前</p></td></tr>
+<tr><td><p>3~4</p></td><td><p>Y 位移，16 位有符号，低字节在前</p></td></tr>
+<tr><td><p>5</p></td><td><p>滚轮，8 位有符号</p></td></tr>
+</tbody>
+</table>
+
+<h3>3.1 EP1 生命周期（背下来）</h3>
+<pre lang="text"><code>1. SET_CONFIGURATION → USB_Ep1_Init：
+   预置 6 字节全 0 报告 + COUNT_TX=6 + STAT_TX=VALID
+2. 主机第一次 IN 轮询 → 硬件发出 6 字节
+   → 自动 STAT_TX 翻回 NAK + CTR_TX 置位
+3. 中断里清 CTR_TX（不碰 STAT）
+4. 主循环看到 STAT_TX=NAK → 写新报告 + 翻转 STAT_TX=VALID
+5. 回到 2</code></pre>
+<p><b>busy 检查</b>：<code>USB_HW_EpTx</code> 开头如果 STAT_TX 还是 VALID（上一帧还没被主机取走）就跳过本次写入，防止覆盖还没发出去的数据。这是 EP1 这类主循环轮询端点的保护，EP0 控制传输由中断驱动，不走这个分支。</p>
+
+<h2>4. 坑与解答（今天的血泪）</h2>
+
+<h3>坑 1：EP1 busy: EP1R=2630 是症状，不是原因</h3>
+<p><b>现象</b>：反复打印 EP1 busy，STAT_TX 一直 VALID。</p>
+<p><b>解答</b>：STAT_TX 一直 VALID = 数据从没被主机取走。这时候别怀疑"开门时机"，先怀疑"主机令牌匹配不匹配"（EA/地址），再怀疑"端点类型对不对"。链路里 CTR_TX 有没有置位是最直接的判据。</p>
+
+<h3>坑 2：F1 寄存器布局别按直觉写</h3>
+<p><b>解答</b>：F1 的 <code>USB_EPnR</code>：EP_TYPE 是<b>位 10:9</b>（所以 <code>3U &lt;&lt; 9</code> = 0x0600 = Interrupt 是对的），EP_KIND 是<b>位 8</b>，EA 是<b>位 3:0</b>。EP0 用 <code>(1U &lt;&lt; 9)</code> = 0x0200 = Control、EA=0 也对；EP1 是 Interrupt + EA=1。别照着"位 9:8 是类型"的旧笔记改，会把 EP_KIND 和 EP_TYPE 搞混。</p>
+
+<h3>坑 3：判断"主机有没有取数据"看 CTR，别看打印</h3>
+<p><b>解答</b>：ISTR 的 EPID 一直 0、没有 CTR_TX 事件，说明外设根本没参与事务。ESOF/SOF/SUSP 都是正常总线事件，勾着不代表有问题。</p>
+
+<h3>坑 4：方向反了先检查自己</h3>
+<p><b>解答</b>：这次"方向反了"是传感器/鼠标拿反了，不是代码问题。将来如果传感器真的装反，在 <code>Mouse_BuildReport</code> 里对 <code>delta_x / delta_y</code> 取反即可（组包层改，不动传感器驱动）。</p>
+
+<h2>5. 当前代码组织</h2>
+<table>
+<thead><tr><th><p>函数</p></th><th><p>职责</p></th></tr></thead>
+<tbody>
+<tr><td><p>USB_Ep0_Init</p></td><td><p>复位后配置 EP0 端点表 + EP0R + DADDR(EF=1)</p></td></tr>
+<tr><td><p>USB_Ep0_Setup</p></td><td><p>读 SETUP → 开门 → 解析 → 按请求回包 → 置标志</p></td></tr>
+<tr><td><p>USB_HW_EpTx</p></td><td><p>写 PMA + COUNT_TX + 翻转 STAT_TX（EP1 带 busy 保护）</p></td></tr>
+<tr><td><p>USB_HW_EpRx</p></td><td><p>写 ADDR_RX/COUNT_RX + 翻转 STAT_RX</p></td></tr>
+<tr><td><p>USB_Ep_Toggle</p></td><td><p>只翻转 STAT/DTOG，不碰 CTR</p></td></tr>
+<tr><td><p>USB_Ep_ClearCtrl</p></td><td><p>只清 CTR_RX/CTR_TX，不碰 STAT/DTOG</p></td></tr>
+<tr><td><p>USB_Ep1_Init</p></td><td><p>EP1 端点表 + EP1R（含 EA=1）+ 预置全 0 报告</p></td></tr>
+<tr><td><p>PWM3360_ReadMotion</p></td><td><p>Motion Burst 读 12 字节，拆出 dx/dy/SQUAL 等</p></td></tr>
+<tr><td><p>Mouse_BuildReport</p></td><td><p>把 dx/dy/按键组成 6 字节 HID 报告（小端）</p></td></tr>
+<tr><td><p>USB_EventPrint</p></td><td><p>主循环打印 SETUP（已精简）</p></td></tr>
+</tbody>
+</table>
+
+<h2>6. 下一阶段预告（阶段 5：按键 / 滚轮 / DPI 切换）</h2>
+<ul>
+<li>按键：Key_Scan 结果塞进 mouse_report[0]（左/中/右 + DPI 调整键）</li>
+<li>滚轮：塞进 mouse_report[5]</li>
+<li>DPI 切换：按键改 PWM3360 CPI（Config1 寄存器）</li>
+<li>之后：2.4G（si24r1）/ 蓝牙（ESP32-S3）无线化、RTOS 化、前端联动调 DPI</li>
+</ul>
